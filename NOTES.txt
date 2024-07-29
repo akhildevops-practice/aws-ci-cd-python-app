@@ -1,0 +1,256 @@
+AWS CODE BUILD:
+1.CreatIAM USER, Admin access, codebild, code deploy, codepipeline, etc and generate https credentials.
+2. Create a Role called "aws code build", search for code build: which works with code build on behalf of us.
+3. Create a project in code build, give a project name: "sample-python-project"
+4. source provider: "GitHub"
+5. Selct repo in my GitHub: "https://github.com/akhildevops-practice/aws-ci-pipeline.git"
+6. Connect with Oath
+7. Environment: Ondemand, Managed image, ec2, os: "Ubuntu", runtime: "standard", image: "7.0", image version : "latest", select existing role: "code-build-ci"
+a) additional-configuration >> privileged >>Enable this flag if you want to build Docker images or want your builds to get elevated privileges.
+8. Buildspec
+A buildspec is a YAML file used in AWS CodeBuild, a fully managed build service that compiles source code, runs tests, and produces software packages ready to deploy. The buildspec file defines how AWS CodeBuild runs a build. It specifies all the build commands and settings used by CodeBuild to create the build environment and run the build.
+
+Key Sections in a buildspec File
+version: Specifies the version of the buildspec format. The current version is 0.2.
+phases: Defines the sequence of commands to run during different phases of the build process:
+install: Commands to set up the build environment, like installing dependencies.
+pre_build: Commands to run before the actual build, such as code linting or static analysis.
+build: Commands to compile or build the code.
+post_build: Commands to run after the build, such as running tests or packaging the artifacts.
+artifacts: Specifies the files to be saved after the build process. This section defines the artifacts (like compiled binaries or packaged applications) that will be output from the build process.
+
+Why It Is Used
+Automation: Automates the build process, making it consistent and repeatable.
+Configuration as Code: Allows developers to define the build process as code, which can be version-controlled and easily modified.
+Integration with CI/CD Pipelines: Integrates seamlessly with CI/CD pipelines, enabling continuous integration and delivery of software.
+Scalability: Leverages AWS infrastructure to scale the build environment based on the project needs.
+Environment Management: Simplifies the setup and management of the build environment by defining dependencies and runtime versions in the buildspec file.
+Using a buildspec file helps streamline the build process, reduce errors, and improve collaboration among development teams by clearly specifying the build steps and environment configuration.
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+version: 0.2
+
+env:
+  parameter-store:
+     DOCKER_REGISTRY_USERNAME: /myapp/docker-credentials/username
+     DOCKER_REGISTRY_PASSWORD: /myapp/docker-credentials/password
+     DOCKER_REGISTRY_URL: /myapp/docker-registry/url
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  pre_build:
+    commands:
+      - pip install -r day-14/simple-python-app/requirements.txt
+  build:
+    commands:
+      - cd day-14/simple-python-app
+      - echo "Building Docker Image"
+      - docker build -t "$DOCKER_REGISTRY_URL/DOCKER_REGISTRY_USERNAME/simple-python-flask-app:latest" .
+      - docker push "$DOCKER_REGISTRY_URL/DOCKER_REGISTRY_USERNAME/simple-python-flask-app:latest"
+  post_build:
+    commands:
+      - echo "Build is Successful"
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+9. Go to systemmanger and open parameter store, create 1. /myapp/docker-registry/url
+							2. /myapp/docker-credentials/username
+							3. /myapp/docker-credentials/password
+Here select secure string, mention the details of docker hub credentials of ur account.
+10. Go to IAM, roles and attach a policy to "code-build-ci" role, "fullacessssm".
+11. o to docker.hub.com, login and check. We can see the repo of sample-python-flask-app : latest.
+
+
+
+Errors:
+
+1. DOWNLOAD_SOURCE State: FAILED
+[Container] 2024/07/28 12:56:03.512889 Phase context status code: Decrypted Variables Error Message: AccessDeniedException: User: arn:aws:sts::211125430103:assumed-role/codebuild-aws-ci_cd-python-app-service-role/AWSCodeBuild-ddef25fa-d49d-4da2-8cc8-2484dda37150 is not authorized to perform: ssm:GetParameters on resource: arn:aws:ssm:ap-south-1:211125430103:parameter/python-app/docker-registry/url because no identity-based policy allows the ssm:GetParameters action
+
+SOLUTION:
+Locate the Role: Go to the IAM Console and find the role codebuild-aws-ci_cd-python-app-service-role.
+Add an Inline Policy:
+Click on the role name to open its details.
+In the "Permissions" tab, click on "Add inline policy".
+Select the "JSON" tab and paste the above JSON policy.
+Click "Review policy".
+Provide a name for the policy (e.g., SSMParameterAccessPolicy).
+Click "Create policy".
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameters",
+                "ssm:GetParameter"
+            ],
+            "Resource": [
+                "arn:aws:ssm:ap-south-1:211125430103:parameter/python-app/docker-credentials/username",
+                "arn:aws:ssm:ap-south-1:211125430103:parameter/python-app/docker-credentials/password",
+                "arn:aws:ssm:ap-south-1:211125430103:parameter/python-app/docker-registry/url"
+            ]
+        }
+    ]
+}
+
+
+
+2. Using buildspec file first i got error of "pip install -r requirements.txt, it is due to the wrong path of requiremnets.txt file."
+
+3. urce is denied
+
+[Container] 2024/07/28 13:04:02.046864 Command did not exit successfully docker push "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/aws-simple-python-flask-app:latest" exit status 1
+[Container] 2024/07/28 13:04:02.050999 Phase complete: BUILD State: FAILED
+[Container] 2024/07/28 13:04:02.051017 Phase context status code: COMMAND_EXECUTION_ERROR Message: Error while executing command: docker push "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/aws-simple-python-flask-app:latest". Reason: exit status 1
+
+
+
+SOLUTION:
+* "Docker Credentials command: 
+- echo "$DOCKER_REGISTRY_PASSWORD" | docker login "${DOCKER_REGISTRY_URL}" -u "${DOCKER_REGISTRY_USERNAME}" --password-stdin
+before this i havn't used this command so that i got error of an docker credential and push."
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+version: 0.2
+env:
+  parameter-store:
+    DOCKER_REGISTRY_USERNAME: /python-app/docker-credentials/username
+    DOCKER_REGISTRY_PASSWORD: /python-app/docker-credentials/password
+    DOCKER_REGISTRY_URL: /python-app/docker-registry/url
+
+phases:
+  pre_build:
+    commands:
+      - pip install -r day-14/simple-python-app/requirements.txt
+      - echo "Logging in to Docker registry"
+      - echo $DOCKER_REGISTRY_PASSWORD | docker login $DOCKER_REGISTRY_URL -u $DOCKER_REGISTRY_USERNAME --password-stdin
+
+  build:
+    commands:
+      - cd day-14/simple-python-app
+      - echo "Building Docker Image"
+      - docker build -t "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/aws-simple-python-flask-app:latest" .
+      - echo "Pushing Docker Image"
+      - docker push "$DOCKER_REGISTRY_URL/$DOCKER_REGISTRY_USERNAME/aws-simple-python-flask-app:latest"
+
+  post_build:
+    commands:
+      - echo "Build is Successful"
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++============================================================+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+*** Go to CODE PIPELINE
+follow the steps in images.
+Here skip the deploy stage.
+
+connect to our githb account and repo of our project, master branch.And code build.
+
+
+Here we can see a pipeline created, wait for execution complete. 
+
+Now change a simple line by giving space in app.py file and commit the changes to master.
+The pipeline will be triggered automatically and build process is started in code build.
+After completing build process and success, check docker repo in docker hub by refreshing it we can see that it is updated 1 few seconds ago.
+
+
+
+
+*** CODE DEPLOY****
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+1. CREATE A PROJECT IN CODE DEPLOY AND SELECT EC2. And create deployment group.
+2. Create an ec2 instance by console ubuntu. Install code deploy agen using aws code deploy userguide document.
+sudo apt update
+sudo apt install ruby-full
+sudo apt install wget
+wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
+chmod +x ./install
+sudo ./install auto
+systemctl status codedeploy-agent
+3.Create a role in IAM elect ec2,, permission: codedeployrole, ( the agent present in ec2 should run)
+4. ec2>> instance >> actions >> modify IAM role>> codedeployrole >> update
+5. restart codedeploy-agent in ec2
+
+sudo service codedeploy-agent restart
+
+
+Summary
+AWS CodeBuild: Compiles and builds the source code, runs tests, and packages the application.
+AWS CodeDeploy: Automates the deployment of the application to instances, managed by the CodeDeploy agent.
+AWS CodePipeline: Orchestrates the entire CI/CD process, integrating CodeBuild and CodeDeploy stages.
+The CodeDeploy agent is essential for executing the deployment process on instances, ensuring the application is correctly installed, started, and verified, thus playing a crucial role in the overall CI/CD deployment strategy.
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++==
+
+6. Go to the IAM role of codedeployrole and attach a permission of ec2fullaccess
+7. Create a group in codedeploy >> sample-python
+
+Here after creating role, it will not be reflected in deployment group, to get that we should check the trust relationship of our created role, we can see only ec2 services, we need to add the statement of code deploy.
+
+
+
+ERRORS:
+WHILE CREATING GROUP, I GOT AN ISSUE THAT MY CODE-DEPLO-EC2 PLOICY IS NOT REFLECTING IN SERVICE ROLE DROP DOWN. GETTING AN ERROR THAT AWS CodeDeploy does not have the permissions required to assume the role arn:aws:iam::211125430103:instance-profile/code-deplo-ec2.AWS CodeDeploy does not have the permissions required to assume the role arn:aws:iam::211125430103:instance-profile/code-deplo-ec2.
+
+*** TO RESOLVE IT I HAVE CHECKED MY ROLE TRUST POLICY >> STATEMENTS I GOT ONLY EC2>> I HAVE ADDED A NEW STATEMENT OF CODEDEPLOY ALONG  WITH >> CHECKED CODE-DEPLOY AGENT STATUS IN EC2 >> ACTIVE AND REFRESHED CODE DEPLOY PAGE IT SOLVED
+
+
+*** After Creating Deployment Group, Go back to developertools>>codedeploy>>deployments after creating the deployment will start and it fails.
+*** go to github and use '.' vscode is opened. copy 
+
+copy the appspec.yml file into root directory. start_container and stop_container files create 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+start_container.sh
+#!/bin/bash
+set -e
+
+# Start the running container (if any)
+docker pull akhilprabhu2005/simple-python-flask-app
+
+#run the docker-image as container
+
+docker run -d -p 5000:5000 akhilprabhu2005/simple-python-flask-app
+
+
+stop_container.sh
+
+#!/bin/bash
+set -e
+
+# Stop the running container (if any)
+echo "Hi"
+
+Commit all these changes.
+
+++++++++++++++++++++++++++
+ERROR: 
+LifecycleEvent - AfterInstall
+Script - scripts/start_container.sh
+[stderr]/opt/codedeploy-agent/deployment-root/639c06f1-f600-48eb-828d-5b9145b5f633/d-48LBZX6C6/deployment-archive/scripts/start_container.sh: line 5: docker: command not found
+
+SOLUTION:
+ - sudo apt install docker.io -y
+
+++++++++++++++++++
+* Open the codepipeline created previously 
+* Edit >> Add stage in build >> code deploy as name >> add action >> ref screenshot
+* Make a small change and commit the changes in repo. Pipeline will run, source and build is successed buit deploy is failed. Here we have used build artifacts so that we are getting an error of insufficient permisions for s3/codebuild- /build-artifacts, if we check s3 we can see the bucket, >> object of our projects. 
+* Then i have changed the deploy stage instead of using build artifacts i have used source artifacts and the pipeline is successful.
+
+error:
+[stderr]docker: Error response from daemon: driver failed programming external connectivity on endpoint gifted_wright (5456c38a89ec4dba249b72e14ef8c8d07276607ce449eb6dfe7e5327a9e8157f): Bind for 0.0.0.0:5000 failed: port is already allocated.
+
+- sudo docker images
+- sudo docker ps
+- sudo docker rm -f 8210c99ebc9c
+
+* Delete the container and release the changes pipeline will be successful.
+we can see the image is pushed and running on instance. 
+
+
+
